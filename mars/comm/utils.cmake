@@ -72,6 +72,20 @@ if(ANDROID)
         add_definitions(-DUSE_CPP_CALLBACK=1)
     endif()
 
+    # Android 15(API 35) 起支持 16KB 内存页的设备。此时动态库 ELF 的 LOAD 段必须按
+    # 16KB 对齐，否则 libmarsxlog.so / libmarsstn.so 在 16KB 页设备上加载失败
+    # （logcat: "empty/missing PT_LOAD segment" / dlopen 返回错误）。
+    # 该选项只对 64 位 ABI 有意义：32 位 ABI 仍是 4KB 页，加大对齐只会让 so 变大。
+    # 建议配合 NDK r28+（r28 起默认就是 16KB 对齐），此处显式声明以保证老版本 NDK 也生效。
+    option(ANDROID_16KB_PAGE_SIZE "Align ELF LOAD segments to 16KB for Android 15 16KB page devices" ON)
+    if(ANDROID_16KB_PAGE_SIZE AND (ANDROID_ABI STREQUAL "arm64-v8a" OR ANDROID_ABI STREQUAL "x86_64"))
+        set(SELF_16KB_PAGE_LINK_FLAGS "-Wl,-z,max-page-size=16384")
+        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${SELF_16KB_PAGE_LINK_FLAGS}")
+        set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} ${SELF_16KB_PAGE_LINK_FLAGS}")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${SELF_16KB_PAGE_LINK_FLAGS}")
+        message(STATUS "${PROJECT_NAME}: 16KB page size link flags = ${SELF_16KB_PAGE_LINK_FLAGS}")
+    endif()
+
 elseif(APPLE)
 
     # for gen xcode project file

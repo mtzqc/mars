@@ -1,6 +1,14 @@
 if(ANDROID)
 
-    set(SELF_EXTRA_FLAGS "-Werror -Wall -Werror=sign-compare -Wtype-limits -Wuninitialized -Wempty-body")
+    # -Werror 会让用较新的 NDK(clang 18+) 编译旧版 mars/boost 代码时，因为新增的
+    # 弃用类告警(deprecated-builtins 等)直接编译失败。可用
+    # -DANDROID_ENABLE_WERROR=OFF 关闭，默认行为保持不变。
+    option(ANDROID_ENABLE_WERROR "treat compiler warnings as errors when building for Android" ON)
+
+    set(SELF_EXTRA_FLAGS "-Wall -Werror=sign-compare -Wtype-limits -Wuninitialized -Wempty-body")
+    if(ANDROID_ENABLE_WERROR)
+        set(SELF_EXTRA_FLAGS "-Werror ${SELF_EXTRA_FLAGS}")
+    endif()
 
     if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
        set(SELF_EXTRA_FLAGS "${SELF_EXTRA_FLAGS} -Wconsumed -Wno-error=tautological-unsigned-zero-compare -Wno-error=char-subscripts -Wno-error=gnu-designator -Wno-error=unused-variable -Wno-error=missing-braces -Wno-error=tautological-type-limit-compare") 

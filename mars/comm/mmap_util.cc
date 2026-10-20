@@ -53,6 +53,16 @@ bool OpenMmapFile(const char* _filepath, unsigned int _size, boost::iostreams::m
     _mmmap_file.open(param);
 
     bool is_open = IsMmapFileOpenSucc(_mmmap_file);
+
+    // 文件已存在时 boost 只按实际文件长度建立映射，不会按 _size 重新 truncate。
+    // Android 15 的 16KB page size 设备上，mmap 长度不是页大小整数倍时，尾部不足
+    // 一页的部分没有真正的磁盘页支撑（文件长度即边界），一旦越界写就是 SIGBUS。
+    // 这里校验映射长度，不足时返回失败让调用方降级到堆内存缓冲区，避免写日志时崩溃。
+    if (is_open && _mmmap_file.size() < _size) {
+        CloseMmapFile(_mmmap_file);
+        return false;
+    }
+
 #ifndef _WIN32
     if (!file_exist && is_open) {
         // Extending a file with ftruncate, thus creating a big hole, and then filling the hole by mod-ifying a shared

@@ -89,6 +89,11 @@ extern void ConsoleLog(const XLoggerInfo* _info, const char* _log);
 
 static const int kMaxDumpLength = 4096;
 
+// 每个日志文件对应的 mmap 缓冲区长度。
+// 注意：mmap 的 length 不要求是系统页大小的整数倍，内核会自动向上取整到整页，
+// 因此 Android 15 的 16KB page size 设备上不需要改这个值，也不要用
+// sysconf(_SC_PAGESIZE) 动态计算：磁盘上遗留的 .mmap3 文件长度是固定的 150KB，
+// 长度一旦变化会导致升级后老版本残留的崩溃日志读取失败（fread 长度不匹配）。
 static const unsigned int kBufferBlockLength = 150 * 1024;
 static const long kMinLogAliveTime = 24 * 60 * 60;  // 1 days in second
 
