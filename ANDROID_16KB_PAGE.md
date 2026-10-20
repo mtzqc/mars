@@ -81,10 +81,10 @@ repositories {
 ```groovy
 dependencies {
     // 自带 libc++_shared.so
-    implementation 'com.tencent.mars:mars-xlog:1.2.6'
+    implementation 'cn.mtzqc.mars:mars-xlog:1.2.6'
 
     // 不含 libc++_shared.so，适合 App 已通过其他依赖提供该运行时的场景
-    // implementation 'com.tencent.mars:mars-xlog-nostl:1.2.6'
+    // implementation 'cn.mtzqc.mars:mars-xlog-nostl:1.2.6'
 }
 ```
 

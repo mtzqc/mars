@@ -5,6 +5,20 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Tencent/mars/pulls)
 [![WeChat Approved](https://img.shields.io/badge/Wechat_Approved-1.2.3-red.svg)](https://github.com/Tencent/mars/wiki)
 [![WeChat Approved](https://img.shields.io/badge/Platform(cmake)-%20iOS%20%7C%20OS%20X%20%7C%20Android(ndkr20)%20%7C%20Windows(vs2015)%20-brightgreen.svg)](https://github.com/Tencent/mars/wiki)
+[![Android 16KB](https://img.shields.io/badge/Android-16KB%20page%20size-blue.svg)](#android-15-16kb-page-size)
+
+> ### Android 15 16KB Page Size
+>
+> This fork ([mtzqc/mars](https://github.com/mtzqc/mars)) adds **Android 15 (API 35) 16KB memory page** support.
+> All `PT_LOAD` segments of `libmarsxlog.so` are aligned to `0x4000`, so the library loads on 16KB-page devices.
+> Prebuilt AARs are published to GitHub Packages under the `cn.mtzqc.mars` group:
+>
+> ```groovy
+> implementation 'cn.mtzqc.mars:mars-xlog:1.2.6'        // bundles libc++_shared.so
+> implementation 'cn.mtzqc.mars:mars-xlog-nostl:1.2.6'  // does not bundle libc++_shared.so
+> ```
+>
+> See **[How to use it](#how-to-use-android-15-16kb-page-size-build)** and **[ANDROID_16KB_PAGE.md](ANDROID_16KB_PAGE.md)** for details.
 
 (中文版本请参看[这里](#mars_cn))
 
@@ -34,6 +48,123 @@ python scripts only support python3.10 or higher
 Choose [Android](#android) or [iOS/OS X](#apple) or [Windows](#windows).
 
 ### <a name="android">[Android](https://github.com/Tencent/mars/wiki/Mars-Android-%E6%8E%A5%E5%85%A5%E6%8C%87%E5%8D%97)</a>
+
+#### <a name="how-to-use-android-15-16kb-page-size-build"></a>How to use (Android 15 16KB page size build)
+
+> 中文说明见下方 [如何使用（Android 15 16KB 页）](#zh-how-to-use)
+
+Prebuilt AARs from this fork are published to **GitHub Packages**:
+
+| Dependency | Size | Bundles `libc++_shared.so` |
+| --- | --- | --- |
+| `cn.mtzqc.mars:mars-xlog:1.2.6` | ~1.4 MB | Yes |
+| `cn.mtzqc.mars:mars-xlog-nostl:1.2.6` | ~485 KB | No |
+
+**1. Add the repository** (`settings.gradle` or module `build.gradle`):
+
+```groovy
+repositories {
+    maven {
+        url "https://maven.pkg.github.com/mtzqc/mars"
+        credentials {
+            username = project.findProperty("gpr.user") ?: System.getenv("GPR_USER")
+            password = project.findProperty("gpr.token") ?: System.getenv("GPR_TOKEN")
+        }
+    }
+}
+```
+
+**2. Put credentials in `gradle.properties`** (never commit this file):
+
+```properties
+gpr.user=your-github-username
+gpr.token=ghp_xxxxxxxxxxxxxxxx
+```
+
+The token needs the `read:packages` scope. GitHub Packages requires authentication even for public repositories.
+
+**3. Add the dependency**:
+
+```groovy
+dependencies {
+    // Bundles libc++_shared.so — use when your app has no other C++ runtime
+    implementation 'cn.mtzqc.mars:mars-xlog:1.2.6'
+
+    // No libc++_shared.so — use when another dependency already ships it
+    // implementation 'cn.mtzqc.mars:mars-xlog-nostl:1.2.6'
+}
+```
+
+Choose `mars-xlog` (full) if nothing else in your app provides `libc++_shared.so`. Choose `mars-xlog-nostl` if your app or another dependency already provides it — otherwise `System.loadLibrary("c++_shared")` throws `UnsatisfiedLinkError`.
+
+**4. Verify alignment** (optional):
+
+```bash
+python3 tools/check_16kb_align.py path/to/app-release.apk
+```
+
+Expected: `arm64-v8a` → `align=0x4000`, `armeabi-v7a` → `align=0x1000`.
+
+<a name="zh-how-to-use"></a>
+**如何使用（Android 15 16KB 页）**
+
+1. 在 `settings.gradle` 或模块 `build.gradle` 里加仓库：
+
+```groovy
+repositories {
+    maven {
+        url "https://maven.pkg.github.com/mtzqc/mars"
+        credentials {
+            username = project.findProperty("gpr.user")
+            password = project.findProperty("gpr.token")
+        }
+    }
+}
+```
+
+2. 在 `gradle.properties` 里放凭据（**不要提交到版本库**）：
+
+```properties
+gpr.user=你的GitHub用户名
+gpr.token=ghp_xxxxxxxxxxxxxxxx
+```
+
+Token 需要 `read:packages` 权限。GitHub Packages 即使仓库是 public，下载仍需鉴权。
+
+3. 加依赖：
+
+```groovy
+dependencies {
+    // 自带 libc++_shared.so，App 没有其他 C++ 运行时时用这个
+    implementation 'cn.mtzqc.mars:mars-xlog:1.2.6'
+
+    // 不含 libc++_shared.so，App 或其他依赖已提供时用这个
+    // implementation 'cn.mtzqc.mars:mars-xlog-nostl:1.2.6'
+}
+```
+
+若选了 `nostl` 但 App 内没有任何库提供 `libc++_shared.so`，运行时会 `UnsatisfiedLinkError`。
+
+4. （可选）校验对齐：
+
+```bash
+python3 tools/check_16kb_align.py path/to/app-release.apk
+```
+
+预期：`arm64-v8a` → `align=0x4000`，`armeabi-v7a` → `align=0x1000`。
+
+**构建 / Build from source**：
+
+```bash
+./build_android_aar.sh
+# 产物 / outputs:
+#   build/android/mars-xlog-1.2.6.aar
+#   build/android/mars-xlog-1.2.6-nostl.aar
+```
+
+Requirements: NDK r27+, CMake, Ninja. See [ANDROID_16KB_PAGE.md](ANDROID_16KB_PAGE.md) for the full change list and rationale.
+
+---
 
 You can use either [mars-wrapper](#wrapper) or [mars-core](#core). We recommend you to use mars-wrapper when you just want to build a sample or demo, while mars-core is preferred to be used in your APP.
 

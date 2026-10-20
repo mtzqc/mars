@@ -14,7 +14,8 @@
     都不传时自动执行 `gh auth token` 获取（需该 token 带 write:packages）
 
 说明:
-    - groupId 固定 com.tencent.mars，可作为官方 mars-xlog 的平替依赖
+    - groupId 默认 cn.mtzqc.mars，避免与官方 com.tencent.mars:mars-xlog 坐标冲突
+    - 可用 --group 覆盖
     - 上传坐标: <group>/<artifact>/<version>/<artifact>-<version>.aar  + .pom
     - 已存在（409）视为成功，方便重复执行
 """
@@ -26,9 +27,8 @@ import sys
 import urllib.error
 import urllib.request
 
-GROUP_ID = "com.tencent.mars"
+GROUP_ID = "cn.mtzqc.mars"
 GROUP_PATH = GROUP_ID.replace(".", "/")
-
 POM_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -85,6 +85,8 @@ def main():
     ap.add_argument("--owner", required=True, help="GitHub 用户名/组织")
     ap.add_argument("--repo", required=True, help="仓库名，Packages 挂在它下面")
     ap.add_argument("--version", required=True)
+    ap.add_argument("--group", default=GROUP_ID,
+                    help="groupId，默认 %s" % GROUP_ID)
     ap.add_argument("--artifact", action="append", default=[],
                     metavar="artifactId=path", help="可重复")
     ap.add_argument("--token", default="")
@@ -93,6 +95,8 @@ def main():
     args = ap.parse_args()
 
     user = args.user or args.owner
+    group_id = args.group
+    group_path = group_id.replace(".", "/")
     token = get_token(args)
     if not token:
         print("[fail] 拿不到 token，请设置 GH_TOKEN 或先 gh auth login", file=sys.stderr)
@@ -110,10 +114,10 @@ def main():
             ok = False
             continue
 
-        ver_dir = "%s/%s/%s/%s" % (base, GROUP_PATH, artifact, args.version)
+        ver_dir = "%s/%s/%s/%s" % (base, group_path, artifact, args.version)
         fname = "%s-%s.aar" % (artifact, args.version)
         pom = POM_TEMPLATE.format(
-            group=GROUP_ID, artifact=artifact, version=args.version,
+            group=group_id, artifact=artifact, version=args.version,
             desc=" (bundled libc++_shared)" if artifact == "mars-xlog" else " (no libc++_shared)")
 
         jobs = [
@@ -137,7 +141,7 @@ def main():
     print("\n依赖写法:")
     for item in args.artifact:
         artifact = item.split("=", 1)[0]
-        print("  implementation '%s:%s:%s'" % (GROUP_ID, artifact, args.version))
+        print("  implementation '%s:%s:%s'" % (group_id, artifact, args.version))
     print("\n仓库配置:")
     print("  maven { url 'https://maven.pkg.github.com/%s/%s'; credentials { username = '%s'; password = <PAT> } }"
           % (args.owner, args.repo, user))
