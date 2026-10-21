@@ -63,7 +63,23 @@ strip 不影响 `PT_LOAD` 对齐（仍为 `0x4000`），导出符号保留。未
 
 ## 引用方式
 
-包已发布到 GitHub Packages：
+### 方式 A：Maven Central（推荐）
+
+不需要加仓库、不需要凭据，`mavenCentral()` 默认就在：
+
+```groovy
+dependencies {
+    // 自带 libc++_shared.so
+    implementation 'io.github.mtzqc:mars-xlog:1.2.6'
+
+    // 不含 libc++_shared.so，适合 App 已通过其他依赖提供该运行时的场景
+    // implementation 'io.github.mtzqc:mars-xlog-nostl:1.2.6'
+}
+```
+
+产物地址：https://repo1.maven.org/maven2/io/github/mtzqc/mars-xlog/1.2.6/
+
+### 方式 B：GitHub Packages
 
 ```groovy
 // settings.gradle 或模块 build.gradle
@@ -80,10 +96,7 @@ repositories {
 
 ```groovy
 dependencies {
-    // 自带 libc++_shared.so
     implementation 'cn.mtzqc.mars:mars-xlog:1.2.6'
-
-    // 不含 libc++_shared.so，适合 App 已通过其他依赖提供该运行时的场景
     // implementation 'cn.mtzqc.mars:mars-xlog-nostl:1.2.6'
 }
 ```
@@ -94,6 +107,11 @@ dependencies {
 gpr.user=mtzqc
 gpr.token=ghp_xxxxxxxx
 ```
+
+### 发布脚本
+
+- `tools/publish_to_maven_central.py` —— 生成并上传 Sonatype Central bundle（需 GPG 签名）
+- `tools/publish_to_github_packages.py` —— 上传到 GitHub Packages Maven registry
 
 ### full 还是 nostl？
 
