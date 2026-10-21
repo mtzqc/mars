@@ -27,12 +27,14 @@ import argparse
 import base64
 import hashlib
 import io
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -200,8 +202,25 @@ def build_bundle(stage_root, out_zip):
     return out_zip
 
 
+def _portal_request(url, user, password, method="GET", data=None, headers=None,
+                    timeout=120):
+    """带 Basic 认证请求 Central Portal，返回 (status, body)。"""
+    req = urllib.request.Request(url, data=data, method=method)
+    cred = base64.b64encode(("%s:%s" % (user, password)).encode()).decode()
+    req.add_header("Authorization", "Basic " + cred)
+    for key, val in (headers or {}).items():
+        req.add_header(key, val)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, resp.read().decode("utf-8", "ignore")
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read().decode("utf-8", "ignore")[:2000]
+    except Exception as exc:  # noqa: BLE001
+        return 0, str(exc)
+
+
 def upload_bundle(zip_path, user, password, name, publishing_type="AUTOMATIC"):
-    """上传 bundle 到 Central Portal，返回 deployment id。"""
+    """上传 bundle 到 Central Portal，返回 (status, deployment id or error)。"""
     url = "%s/upload?name=%s&publishingType=%s" % (
         PORTAL_API, urllib.parse.quote(name), publishing_type)
     boundary = "----MarsBoundary7x" + os.urandom(8).hex()
@@ -217,18 +236,29 @@ def upload_bundle(zip_path, user, password, name, publishing_type="AUTOMATIC"):
     body.write(("\r\n--%s--\r\n" % boundary).encode())
     data = body.getvalue()
 
-    req = urllib.request.Request(url, data=data, method="POST")
-    cred = base64.b64encode(("%s:%s" % (user, password)).encode()).decode()
-    req.add_header("Authorization", "Basic " + cred)
-    req.add_header("Content-Type", "multipart/form-data; boundary=%s" % boundary)
-    req.add_header("Content-Length", str(len(data)))
+    return _portal_request(
+        url, user, password, method="POST", data=data, timeout=300,
+        headers={"Content-Type": "multipart/form-data; boundary=%s" % boundary})
+
+
+def list_deployments(user, password):
+    """列出 deployments，返回列表（最新在前）。"""
+    status, body = _portal_request(
+        "%s/deployments" % PORTAL_API, user, password)
+    if status != 200:
+        return status, []
     try:
-        with urllib.request.urlopen(req, timeout=300) as resp:
-            return resp.status, resp.read().decode("utf-8", "ignore")
-    except urllib.error.HTTPError as exc:
-        return exc.code, exc.read().decode("utf-8", "ignore")[:2000]
-    except Exception as exc:  # noqa: BLE001
-        return 0, str(exc)
+        return status, json.loads(body).get("deployments", [])
+    except Exception:  # noqa: BLE001
+        return status, []
+
+
+def publish_deployment(deployment_id, user, password):
+    """把 VALIDATED 的 deployment 正式发布（USER_MANAGED 模式需要）。"""
+    return _portal_request(
+        "%s/deployment/%s" % (PORTAL_API, deployment_id),
+        user, password, method="POST")
+
 
 
 def main():
@@ -251,6 +281,10 @@ def main():
                     choices=["AUTOMATIC", "USER_MANAGED"])
     ap.add_argument("--skip-upload", action="store_true",
                     help="只生成 bundle 不上传")
+    ap.add_argument("--auto-publish", action="store_true",
+                    help="USER_MANAGED 模式下校验通过后自动触发发布")
+    ap.add_argument("--wait", type=int, default=0,
+                    help="上传后等待校验的秒数，0 表示不等待")
     args = ap.parse_args()
 
     group_path = args.group.replace(".", "/")
@@ -344,13 +378,54 @@ def main():
     status, body = upload_bundle(bundle, args.sonatype_user, args.sonatype_pass,
                                  "mars-xlog-%s" % args.version,
                                  args.publishing_type)
-    if status in (200, 201, 202):
-        print("  [ok] HTTP %s" % status)
-        print("  deployment: %s" % body.strip())
-        print("\n后续: 到 https://central.sonatype.com/publishing/deployments 查看进度")
-        return 0
-    print("  [fail] HTTP %s\n%s" % (status, body), file=sys.stderr)
-    return 1
+    if status not in (200, 201, 202):
+        print("  [fail] HTTP %s\n%s" % (status, body), file=sys.stderr)
+        return 1
+    deployment_id = body.strip().strip('"')
+    print("  [ok] HTTP %s" % status)
+    print("  deployment: %s" % deployment_id)
+
+    if args.wait > 0:
+        print("\n== 等待校验（最多 %d 秒）==" % args.wait)
+        waited = 0
+        state = ""
+        while waited < args.wait:
+            _st, deps = list_deployments(args.sonatype_user, args.sonatype_pass)
+            for dep in deps:
+                if dep.get("deploymentId") == deployment_id:
+                    state = dep.get("deploymentState", "")
+                    errs = dep.get("errors") or []
+                    print("  [%3ds] %s (errors=%d, warnings=%d)"
+                          % (waited, state, len(errs),
+                             len(dep.get("warnings") or [])))
+                    for err in errs[:5]:
+                        print("     ERR: %s" % err.get("message"))
+                    break
+            if state in ("VALIDATED", "PUBLISHING", "PUBLISHED", "FAILED"):
+                break
+            time.sleep(10)
+            waited += 10
+
+        if state == "FAILED":
+            print("  [fail] 校验失败，见上方错误", file=sys.stderr)
+            return 1
+
+        if args.auto_publish and state == "VALIDATED":
+            pst, pbody = publish_deployment(deployment_id,
+                                            args.sonatype_user,
+                                            args.sonatype_pass)
+            if pst in (200, 202, 204):
+                print("  [ok] 已触发发布 (HTTP %s)" % pst)
+            else:
+                print("  [fail] 发布失败 HTTP %s %s" % (pst, pbody),
+                      file=sys.stderr)
+                return 1
+
+    print("\n后续: https://central.sonatype.com/publishing/deployments")
+    print("      中央仓库同步通常需 5-30 分钟，"
+          "校验地址 https://repo1.maven.org/maven2/%s/"
+          % group_path.replace("/", "/"))
+    return 0
 
 
 if __name__ == "__main__":
