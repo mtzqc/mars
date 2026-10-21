@@ -19,10 +19,7 @@
 > implementation 'io.github.mtzqc:mars-xlog-nostl:1.2.6'  // does not bundle libc++_shared.so
 > ```
 >
-> Also available from GitHub Packages as `cn.mtzqc.mars:mars-xlog:1.2.6` (requires a `read:packages` token).
->
 > See **[How to use it](#how-to-use-android-15-16kb-page-size-build)** and **[ANDROID_16KB_PAGE.md](ANDROID_16KB_PAGE.md)** for details.
-
 (中文版本请参看[这里](#mars_cn))
 
 Mars is a cross-platform infrastructure component developed by WeChat Mobile Team.
@@ -56,16 +53,12 @@ Choose [Android](#android) or [iOS/OS X](#apple) or [Windows](#windows).
 
 > 中文说明见下方 [如何使用（Android 15 16KB 页）](#zh-how-to-use)
 
-Prebuilt AARs from this fork are published to **Maven Central** (recommended) and **GitHub Packages**.
+Prebuilt AARs from this fork are published to **Maven Central**.
 
-| Dependency | Size | Bundles `libc++_shared.so` | Repository |
-| --- | --- | --- | --- |
-| `io.github.mtzqc:mars-xlog:1.2.6` | ~1.4 MB | Yes | Maven Central |
-| `io.github.mtzqc:mars-xlog-nostl:1.2.6` | ~485 KB | No | Maven Central |
-| `cn.mtzqc.mars:mars-xlog:1.2.6` | ~1.4 MB | Yes | GitHub Packages |
-| `cn.mtzqc.mars:mars-xlog-nostl:1.2.6` | ~485 KB | No | GitHub Packages |
-
-### Option A — Maven Central (simplest)
+| Dependency | Size | Bundles `libc++_shared.so` |
+| --- | --- | --- |
+| `io.github.mtzqc:mars-xlog:1.2.6` | ~1.4 MB | Yes |
+| `io.github.mtzqc:mars-xlog-nostl:1.2.6` | ~485 KB | No |
 
 No repository block and no credentials needed — just make sure `mavenCentral()` is present (it is by default):
 
@@ -78,41 +71,6 @@ dependencies {
     // implementation 'io.github.mtzqc:mars-xlog-nostl:1.2.6'
 }
 ```
-
-### Option B — GitHub Packages
-
-**1. Add the repository** (`settings.gradle` or module `build.gradle`):
-
-```groovy
-repositories {
-    maven {
-        url "https://maven.pkg.github.com/mtzqc/mars"
-        credentials {
-            username = project.findProperty("gpr.user") ?: System.getenv("GPR_USER")
-            password = project.findProperty("gpr.token") ?: System.getenv("GPR_TOKEN")
-        }
-    }
-}
-```
-
-**2. Put credentials in `gradle.properties`** (never commit this file):
-
-```properties
-gpr.user=your-github-username
-gpr.token=ghp_xxxxxxxxxxxxxxxx
-```
-
-The token needs the `read:packages` scope. GitHub Packages requires authentication even for public repositories.
-
-**3. Add the dependency**:
-
-```groovy
-dependencies {
-    implementation 'cn.mtzqc.mars:mars-xlog:1.2.6'
-}
-```
-
-### Which artifact? (both options)
 
 Choose `mars-xlog` (full) if nothing else in your app provides `libc++_shared.so`. Choose `mars-xlog-nostl` if your app or another dependency already provides it — otherwise `System.loadLibrary("c++_shared")` throws `UnsatisfiedLinkError`.
 
@@ -127,9 +85,7 @@ Expected: `arm64-v8a` → `align=0x4000`, `armeabi-v7a` → `align=0x1000`.
 <a name="zh-how-to-use"></a>
 **如何使用（Android 15 16KB 页）**
 
-**方式 A：Maven Central（最简单，推荐）**
-
-不需要加仓库、不需要任何凭据，工程里只要有 `mavenCentral()`（默认就有）即可：
+包已发布到 **Maven Central**，不需要加仓库、不需要任何凭据，工程里只要有 `mavenCentral()`（默认就有）即可：
 
 ```groovy
 dependencies {
@@ -141,42 +97,9 @@ dependencies {
 }
 ```
 
-**方式 B：GitHub Packages**
+**两个变体怎么选**：`mars-xlog` 自带 `libc++_shared.so`，开箱即用；`mars-xlog-nostl` 不含，适合 App 本身或其他依赖已提供该运行时的情况。若选了 `nostl` 但 App 内没有任何库提供 `libc++_shared.so`，运行时会 `UnsatisfiedLinkError`。
 
-1. 在 `settings.gradle` 或模块 `build.gradle` 里加仓库：
-
-```groovy
-repositories {
-    maven {
-        url "https://maven.pkg.github.com/mtzqc/mars"
-        credentials {
-            username = project.findProperty("gpr.user")
-            password = project.findProperty("gpr.token")
-        }
-    }
-}
-```
-
-2. 在 `gradle.properties` 里放凭据（**不要提交到版本库**）：
-
-```properties
-gpr.user=你的GitHub用户名
-gpr.token=ghp_xxxxxxxxxxxxxxxx
-```
-
-Token 需要 `read:packages` 权限。GitHub Packages 即使仓库是 public，下载仍需鉴权。
-
-3. 加依赖：
-
-```groovy
-dependencies {
-    implementation 'cn.mtzqc.mars:mars-xlog:1.2.6'
-}
-```
-
-**两个变体怎么选**（两种方式通用）：`mars-xlog` 自带 `libc++_shared.so`，开箱即用；`mars-xlog-nostl` 不含，适合 App 本身或其他依赖已提供该运行时的情况。若选了 `nostl` 但 App 内没有任何库提供 `libc++_shared.so`，运行时会 `UnsatisfiedLinkError`。
-
-4. （可选）校验对齐：
+（可选）校验对齐：
 
 ```bash
 python3 tools/check_16kb_align.py path/to/app-release.apk
